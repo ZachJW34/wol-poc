@@ -1,0 +1,28 @@
+{
+  "name": "wol-poc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.2"
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test:server": "bun test tests/server",
+    "build": "vite build",
+    "test:e2e": "playwright test",
+    "format:check": "prettier --check .",
+    "start": "bun src/server/index.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/bun": "1.4.3",
+    "prettier": "3.9.10",
+    "prettier-plugin-svelte": "4.1.1",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.7",
+    "typescript": "5.9.3",
+    "vite": "8.3.4"
+  }
+}
