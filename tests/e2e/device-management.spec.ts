@@ -95,6 +95,8 @@ test("add, duplicate validation, edit, clearing the override, and delete", async
     saved = await apiDevices(page, server.url);
     expect(saved).toHaveLength(1);
     expect(saved[0]!.broadcastAddress).toBeNull();
+    // The card names the CLI default, not a server setting, once cleared.
+    await expect(card).toContainText("Broadcast: CLI default");
 
     // Cancel does nothing: the record is unchanged.
     await card.getByRole("button", { name: "Delete Desk PC" }).click();
@@ -108,6 +110,54 @@ test("add, duplicate validation, edit, clearing the override, and delete", async
     await expect(status).toContainText("Device deleted");
     saved = await apiDevices(page, server.url);
     expect(saved).toHaveLength(0);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("a null override is labelled the CLI default before and after an override", async ({
+  page,
+}) => {
+  const server = await startScenarioServer("fixture-sqlite", {
+    E2E_DATABASE_PATH: tempDatabasePath(),
+  });
+  try {
+    await page.goto(`${server.url}/`);
+    const status = page.getByRole("status");
+
+    // Create with no override: help and card both name the installed CLI default.
+    await expect(addForm(page).locator("#add-broadcast-help")).toContainText(
+      "wakeonlan CLI default",
+    );
+    await addForm(page).getByLabel("Name").fill("CLI default PC");
+    await addForm(page).getByLabel("MAC address").fill("02:AA:BB:CC:DD:F0");
+    await addForm(page).getByRole("button", { name: "Add device" }).click();
+
+    const card = status.locator(".device-card");
+    await expect(card).toContainText("Broadcast: CLI default");
+    let saved = await apiDevices(page, server.url);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!.broadcastAddress).toBeNull();
+
+    // An explicit override wins for that device and is shown as the saved value.
+    await card.getByRole("button", { name: "Edit CLI default PC" }).click();
+    const editForm = status.locator("form.edit-form");
+    await expect(editForm.locator("#edit-broadcast-help")).toContainText(
+      "wakeonlan CLI default",
+    );
+    await editForm.getByLabel("Broadcast override").fill("192.0.2.255");
+    await editForm.getByRole("button", { name: "Save changes" }).click();
+    await expect(card).toContainText("Broadcast: 192.0.2.255");
+    saved = await apiDevices(page, server.url);
+    expect(saved[0]!.broadcastAddress).toBe("192.0.2.255");
+
+    // Clearing the override through Edit restores the CLI default label.
+    await card.getByRole("button", { name: "Edit CLI default PC" }).click();
+    await editForm.getByLabel("Broadcast override").fill("");
+    await editForm.getByRole("button", { name: "Save changes" }).click();
+    await expect(card).toContainText("Broadcast: CLI default");
+    saved = await apiDevices(page, server.url);
+    expect(saved[0]!.broadcastAddress).toBeNull();
   } finally {
     await server.stop();
   }

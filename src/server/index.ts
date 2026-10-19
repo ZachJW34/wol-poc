@@ -72,7 +72,6 @@ export function startServer(
   const wake = createWakeService({
     repository,
     runWakeCommand: options.runWakeCommand ?? createWakeRunner(),
-    defaultBroadcastAddress: config.broadcastAddress,
   });
 
   const server = Bun.serve({

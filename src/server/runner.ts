@@ -2,7 +2,9 @@
  * P05 — C3 command runner (process handling only).
  *
  * Production runs the installed `wakeonlan` CLI with exactly
- * `["wakeonlan", "-i", broadcastAddress, macAddress]` and no shell expansion.
+ * `["wakeonlan", macAddress]` when the device has no saved broadcast override,
+ * and `["wakeonlan", "-i", broadcastAddress, macAddress]` when it does, with no
+ * shell expansion, no subnet inference, and no hardcoded default address.
  * This module owns exit status, timeout termination, and bounded diagnostics;
  * validation, cooldown, and HTTP mapping live in other packets. The runner never
  * throws: every path returns one of the three C3 result kinds.
@@ -194,7 +196,12 @@ export function createWakeRunner(options: RunnerOptions = {}): RunWakeCommand {
     macAddress,
     broadcastAddress,
   }): Promise<CommandResult> {
-    const argv = [WAKE_EXECUTABLE, "-i", broadcastAddress, macAddress];
+    // Exact argv per `wol-cli-default-r2`: no override means the installed CLI's
+    // own default, so the address is simply omitted rather than substituted.
+    const argv =
+      broadcastAddress === null
+        ? [WAKE_EXECUTABLE, macAddress]
+        : [WAKE_EXECUTABLE, "-i", broadcastAddress, macAddress];
 
     // Internal logging only: a throwing callback must not reject the runner.
     const report = (diagnostics: RunnerDiagnostics): void => {

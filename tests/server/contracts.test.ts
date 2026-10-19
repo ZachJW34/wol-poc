@@ -136,19 +136,32 @@ describe("C3 runner contract", () => {
     expect(kindOf({ kind: "timeout" })).toBe("timeout");
   });
 
-  test("a fake runner conforming to RunWakeCommand receives both addresses", async () => {
-    const seen: Array<{ macAddress: string; broadcastAddress: string }> = [];
+  test("a fake runner conforming to RunWakeCommand receives the device override unchanged", async () => {
+    const seen: Array<{ macAddress: string; broadcastAddress: string | null }> =
+      [];
     const fakeRunner: RunWakeCommand = async (input) => {
       seen.push(input);
       return { kind: "ok" };
     };
+    // Non-vacuity: the null input is the CLI-default case, so a contract that
+    // required a string could not accept it, and a runner that substituted a
+    // default could not report null here.
     const result = await fakeRunner({
       macAddress: "02:AA:BB:CC:DD:EE",
-      broadcastAddress: "192.168.1.255",
+      broadcastAddress: null,
     });
     expect(result).toEqual({ kind: "ok" });
     expect(seen).toEqual([
-      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: "192.168.1.255" },
+      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: null },
     ]);
+
+    await fakeRunner({
+      macAddress: "02:AA:BB:CC:DD:EE",
+      broadcastAddress: "192.168.1.255",
+    });
+    expect(seen[1]).toEqual({
+      macAddress: "02:AA:BB:CC:DD:EE",
+      broadcastAddress: "192.168.1.255",
+    });
   });
 });

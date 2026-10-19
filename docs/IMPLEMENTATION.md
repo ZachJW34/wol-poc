@@ -1,5 +1,13 @@
 # WoL web app — implementation handoff
 
+## Current revision — `wol-cli-default-r2`
+
+User authorized updating this plan and executing the simplification via Strata.
+The r1 handoff below is historical; the r2 amendment in section 8 supersedes its
+global broadcast requirement, fixed `-i` argv, and associated UI/config wording.
+All other r1 contracts remain unchanged. Progress/evidence lives in
+`IMPLEMENTATION_STATUS.md`.
+
 ## Handoff
 
 - Revision: `wol-mvp-r1`, prepared 2026-10-18.
@@ -540,3 +548,81 @@ values are configuration, not reasons to hardcode assumptions or alter Tailscale
 
 If discovery, app accounts, direct Tailscale binding, or multi-process deployment
 is requested later, revise the relevant product/security contracts before work.
+
+## 8. CLI-default simplification — `wol-cli-default-r2`
+
+### Source, approval and baseline
+
+- Source: user observed the configured documentation broadcast did not wake the
+  target although the CLI exited 0; invoking `wakeonlan <MAC>` manually did work.
+- Authorization: user explicitly requested updating impl and using Strata to make
+  the changes. This authorizes r2 code/docs/tests, not live wake/deployment actions.
+- Existing implementation: r1 P01–P08 accepted; production config requires
+  WOL_BROADCAST_ADDRESS, wake service supplies it as a fallback, runner always
+  inserts `-i`, and UI labels null overrides as `Server default`.
+- Preserve docs/plan.md as historical source, existing user edits, SQLite records,
+  shared HTTP device shapes, origin security, and loopback-only binding. No
+  dependencies, commits, infrastructure changes, or automated hardware calls.
+
+### Revised contracts (R4, R5, R9, R10)
+
+- Remove the global broadcast setting from AppConfig and WakeServiceOptions.
+  WOL_BROADCAST_ADDRESS is no longer read or required, including if an old .env
+  still contains it. Do not read, edit, or delete the user's real .env.
+- Keep Device.broadcastAddress and create/update shapes/validation unchanged.
+  null means delegate to the installed CLI's default; an explicit valid per-device
+  override still wins. Do not silently clear existing overrides or migrate data.
+- RunWakeCommand takes `{ macAddress: string; broadcastAddress: string | null }`.
+  For null the exact argv is `["wakeonlan", macAddress]`; for a saved override it
+  remains `["wakeonlan", "-i", broadcastAddress, macAddress]`. Never invoke a shell,
+  infer a subnet, or hardcode an IP for the default path. Preserve 5s timeout,
+  bounded concurrent output draining, errors, timestamps and cooldown behavior.
+- Keep APP_ORIGIN required and its exact-origin mutation checks; keep HOST
+  loopback-only. Broadcast destination is not the loopback bind address.
+- UI says `CLI default` for no override and explains blank delegates to wakeonlan.
+  Add/edit override stays optional. No unsupported reachability/boot claims.
+- Docs lead with plain `wakeonlan <MAC>` behavior, omit global broadcast setup,
+  explain removing obsolete WOL_BROADCAST_ADDRESS has no effect on stored device
+  overrides, and advise clearing a wrong override through the edit form.
+  .env.example must not contain a broadcast example that can become live config.
+- User-reported manual behavior is evidence only for that manual command, not a
+  newly verified app/phone smoke test. P09 live verification stays separately gated;
+  `-i` compatibility is needed only if an optional override will be used.
+
+### P10a — Backend CLI default (R4, R9)
+
+- Bootstrap reads: this amendment; src/shared/contracts.ts runner types;
+  src/server/config.ts, wake.ts, runner.ts, index.ts; corresponding server tests
+  and tests/e2e/harness.ts configuration consumers.
+- Scope: shared runner type, backend config/wake/runner/index, tests/server,
+  tests/e2e/harness.ts only for config/service compatibility, harmless fixtures
+  if needed. Worker handoff: docs/work/P10-handoff.md. No web UI/docs/dependencies.
+- Acceptance: startup without broadcast variable succeeds; old environment value
+  cannot affect commands; null override emits exact MAC-only argv; explicit device
+  override emits exact -i argv; clearing override restores CLI default. Meaningful
+  config/service/argv tests preserve process, security, timestamp and cooldown tests.
+- Focused checks: config/runner/wake/startup tests and `bun run check`;
+  acceptance: `bun run test:server`. Document temporary expected browser wording
+  mismatches for P10b; do not weaken old assertions.
+
+### P10b — UI/docs and final integration (R5, R9, R10)
+
+- Depends on accepted P10a. Bootstrap: amendment, P10 handoff, src/web/App.svelte,
+  README.md, .env.example, docs/wol-poc.service, tests/e2e broadcast assertions.
+- Scope: src/web/App.svelte labels/help only, README.md, .env.example,
+  docs/wol-poc.service if needed, tests/e2e; worker handoff docs/work/P10-handoff.md.
+- Acceptance: UI accurately names CLI default; existing management flows still
+  work, blank override and explicit override round-trip correctly, docs show
+  safe minimal config, no global broadcast required, no real runtime env/data edits.
+- Final gates after last changes, repository root: `bun run check`,
+  `bun run test:server`, `bun run build`, `bun run test:e2e`,
+  `bun run format:check`. Use installed Bun path if not on shell PATH; no installs.
+- All subprocess tests use harmless seams/fixtures, never installed wakeonlan.
+  Report files, exact command exits, unmet criteria and live checks not run.
+
+### Stop conditions
+
+Stop for unexpected user edits/conflicts, dependency changes, required data
+migration, or changes to origin/security semantics. Keep implementation in source
+on incomplete turns and update handoff; do not leave diagnostic stubs or rely on
+temporary backups. Parent owns status and acceptance.

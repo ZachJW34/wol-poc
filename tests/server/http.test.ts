@@ -1047,7 +1047,6 @@ describe("POST /api/devices/:id/wake (P06)", () => {
     const service = createWakeService({
       repository,
       runWakeCommand: () => gate.promise,
-      defaultBroadcastAddress: "192.168.1.255",
       nowMs: () => 0,
       timestamp: () => "2026-01-02T03:04:05.000Z",
     });
@@ -1097,6 +1096,70 @@ describe("POST /api/devices/:id/wake (P06)", () => {
     expect(after.status).toBe(200);
     expect(service.isBusy(DEVICE.id)).toBe(false);
     expect(repository.calls).toEqual(["get", "recordWakeSent", "update"]);
+  });
+
+  test("a cleared override reaches the runner as null on the next wake", async () => {
+    const repository = fakeRepository({}, [DEVICE]);
+    let now = 0;
+    const calls: Array<{
+      macAddress: string;
+      broadcastAddress: string | null;
+    }> = [];
+    const service = createWakeService({
+      repository,
+      runWakeCommand: async (input) => {
+        calls.push({ ...input });
+        return { kind: "ok" };
+      },
+      nowMs: () => now,
+      timestamp: () => "2026-01-02T03:04:05.000Z",
+    });
+    const handler = appWith({ repository, wake: service });
+    const jsonHeaders = {
+      origin: APP_ORIGIN,
+      "content-type": "application/json",
+    };
+
+    // DEVICE has no override, so the CLI-default path is what the runner sees.
+    const first = await get(handler, WAKE_PATH, wakeInit(APP_ORIGIN));
+    expect(first.status).toBe(200);
+    expect(calls).toEqual([
+      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: null },
+    ]);
+
+    const saved = await get(handler, `/api/devices/${DEVICE.id}`, {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: '{"broadcastAddress":"10.0.0.255"}',
+    });
+    expect(saved.status).toBe(200);
+
+    now += 5000;
+    const second = await get(handler, WAKE_PATH, wakeInit(APP_ORIGIN));
+    expect(second.status).toBe(200);
+
+    // Clear the override the way the edit form does: an empty field sends null.
+    const cleared = await get(handler, `/api/devices/${DEVICE.id}`, {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: '{"broadcastAddress":null}',
+    });
+    expect(cleared.status).toBe(200);
+    expect(
+      ((await body(cleared)) as { device: Device }).device.broadcastAddress,
+    ).toBeNull();
+
+    now += 5000;
+    const third = await get(handler, WAKE_PATH, wakeInit(APP_ORIGIN));
+    expect(third.status).toBe(200);
+
+    // Non-vacuity: the same device produced an override on the second wake, so a
+    // retained global default or a stale override would show up on the third.
+    expect(calls).toEqual([
+      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: null },
+      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: "10.0.0.255" },
+      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: null },
+    ]);
   });
 });
 
@@ -1373,7 +1436,6 @@ describe("production startup", () => {
     loadConfig(
       {
         APP_ORIGIN: "http://127.0.0.1:3000",
-        WOL_BROADCAST_ADDRESS: "192.168.1.255",
       },
       { mode: "test" },
     );
@@ -1480,7 +1542,10 @@ describe("production startup", () => {
     const before = listenerSnapshot();
 
     const gate = deferred<CommandResult>();
-    const calls: Array<{ macAddress: string; broadcastAddress: string }> = [];
+    const calls: Array<{
+      macAddress: string;
+      broadcastAddress: string | null;
+    }> = [];
     const repository = openDeviceRepository(databasePath);
     const server = startServer(config, {
       repository,
@@ -1544,7 +1609,8 @@ describe("production startup", () => {
       });
 
       // Non-vacuity: the injected command observed the normalized MAC and the
-      // device override separately from the configured default broadcast.
+      // device's own saved override, which the composition root passes through
+      // unchanged rather than substituting any default.
       expect(calls).toEqual([
         { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: "10.0.0.255" },
       ]);

@@ -9,6 +9,9 @@
  *   failure, not at request start.
  * - The state is process-local: it resets when a new `WakeService` is
  *   constructed, while `lastWakeSentAt` stays persistent in the repository.
+ * - The device's saved broadcast override is handed to the runner unchanged; a
+ *   null override delegates to the installed CLI's default, and clearing an
+ *   override therefore restores that CLI default on the next wake.
  *
  * The fixed cooldown constant is not configurable; tests inject the monotonic
  * clock, the wall-clock timestamp provider, and the runner.
@@ -34,8 +37,6 @@ export type WakeServiceOptions = {
   repository: DeviceRepository;
   /** The accepted C3 runner. Tests inject a fake; production wires the real one. */
   runWakeCommand: RunWakeCommand;
-  /** Configured default broadcast; a device override wins when it is non-null. */
-  defaultBroadcastAddress: string;
   /** Monotonic milliseconds clock. Production uses the system clock. */
   nowMs?: () => number;
   /** Wall-clock UTC ISO timestamp provider. Production uses the system clock. */
@@ -52,7 +53,7 @@ const IN_FLIGHT_MESSAGE = "A wake is already running for this device.";
 const COOLDOWN_MESSAGE = "Wake cooldown is active for this device.";
 
 export function createWakeService(options: WakeServiceOptions): WakeService {
-  const { repository, runWakeCommand, defaultBroadcastAddress } = options;
+  const { repository, runWakeCommand } = options;
   const nowMs = options.nowMs ?? ((): number => performance.now());
   const timestamp =
     options.timestamp ?? ((): string => new Date().toISOString());
@@ -99,11 +100,12 @@ export function createWakeService(options: WakeServiceOptions): WakeService {
     inFlight.add(id);
     let commandSucceeded = false;
     try {
-      const effectiveBroadcast =
-        device.broadcastAddress ?? defaultBroadcastAddress;
+      // The device's saved override is passed through unchanged. A null override
+      // means the installed CLI's own default applies, so no address is invented
+      // or substituted here.
       const result = await runWakeCommand({
         macAddress: device.macAddress,
-        broadcastAddress: effectiveBroadcast,
+        broadcastAddress: device.broadcastAddress,
       });
       if (result.kind === "timeout") {
         throw new ApplicationError("WAKE_TIMEOUT", TIMEOUT_MESSAGE);

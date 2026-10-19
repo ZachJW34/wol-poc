@@ -9,7 +9,6 @@ const STATIC_ROOT = resolve(CWD, "dist");
 function env(overrides: Record<string, string | undefined> = {}) {
   return {
     APP_ORIGIN: "https://wol.tailnet.example",
-    WOL_BROADCAST_ADDRESS: "192.168.1.255",
     ...overrides,
   };
 }
@@ -28,7 +27,9 @@ describe("defaults", () => {
     expect(config.host).toBe("127.0.0.1");
     expect(config.port).toBe(3000);
     expect(config.appOrigin).toBe("https://wol.tailnet.example");
-    expect(config.broadcastAddress).toBe("192.168.1.255");
+    // wol-cli-default-r2: startup succeeds with no broadcast variable at all, so
+    // the configuration carries no global broadcast value.
+    expect("broadcastAddress" in config).toBe(false);
     expect(config.databasePath).toBe(join(CWD, "data", "wol.sqlite"));
     expect(config.staticRoot).toBe(STATIC_ROOT);
   });
@@ -106,19 +107,11 @@ describe("APP_ORIGIN", () => {
   });
 });
 
-describe("WOL_BROADCAST_ADDRESS", () => {
-  test("an operator-supplied IPv4 broadcast address is accepted", () => {
-    expect(
-      load({ WOL_BROADCAST_ADDRESS: "192.168.1.255" }, "production")
-        .broadcastAddress,
-    ).toBe("192.168.1.255");
-    expect(
-      load({ WOL_BROADCAST_ADDRESS: "10.0.0.31" }, "test").broadcastAddress,
-    ).toBe("10.0.0.31");
-  });
-
-  test("missing, malformed, wildcard, and multicast addresses are rejected", () => {
+describe("WOL_BROADCAST_ADDRESS (no longer read)", () => {
+  test("a legacy environment value is inert, including values the old parser rejected", () => {
     for (const raw of [
+      "192.168.1.255",
+      "192.0.2.255",
       "",
       "192.168.1",
       "192.168.1.256",
@@ -127,11 +120,25 @@ describe("WOL_BROADCAST_ADDRESS", () => {
       "224.0.0.1",
       "239.255.255.255",
       "ff02::1",
+      "not an address at all",
     ]) {
-      expect(() => load({ WOL_BROADCAST_ADDRESS: raw }, "production")).toThrow(
-        ConfigError,
-      );
+      for (const mode of ["production", "development", "test"] as const) {
+        const config = load({ WOL_BROADCAST_ADDRESS: raw }, mode);
+        // Non-vacuity: every value here except the two documentation addresses
+        // would have failed the old required-broadcast parser, so a parser that
+        // still read the variable could not return a config for them.
+        expect(config.mode).toBe(mode);
+        expect("broadcastAddress" in config).toBe(false);
+      }
     }
+  });
+
+  test("a legacy value cannot change any parsed setting", () => {
+    // Non-vacuity: the legacy value is a multicast address the old parser
+    // rejected, so equality with the plain config proves nothing was read.
+    expect(load({ WOL_BROADCAST_ADDRESS: "224.0.0.1" }, "production")).toEqual(
+      load({}, "production"),
+    );
   });
 });
 

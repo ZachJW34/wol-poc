@@ -1,11 +1,11 @@
 # Implementation status
 
 ## Execution context
-- Plan path and revision: `docs/IMPLEMENTATION.md`, `wol-mvp-r1`.
+- Plan path and revision: `docs/IMPLEMENTATION.md`, `wol-cli-default-r2` amendment; r1 P01–P08 acceptance remains historical.
 - Source/spec anchors: `docs/plan.md`; approved handoff contracts and packet map.
 - Execution authorization: user approval in this session.
 - Working directory and baseline identifier: `/home/zachjw34/code/wol-poc`; existing Git repository (preflight: `git rev-parse --is-inside-work-tree` → true; do not initialize or commit).
-- Last checkpoint: 2026-10-18 — preflight complete; workspace contains `LICENSE`, `docs/plan.md`, and `docs/IMPLEMENTATION.md`; no `AGENTS.md` found.
+- Last checkpoint: 2026-10-18 — r2 P10a/P10b accepted after source/test/docs review and all five final gates passed. Runtime environment/database unchanged; no live wake performed.
 
 ## Packets
 
@@ -20,8 +20,12 @@
 | P07 | accepted | `ses_eae7250ecffexIzhfP3eiytO0e` (initial UI: `ses_eae897118ffeQuv9xbmDM1BFQD`; recovery: `ses_eae7d5c09ffe2EWKX75cOszKFI`; final corrections/evidence: `ses_eae7250ecffexIzhfP3eiytO0e`) | 2 | Accepted after reviewing UI, validation, harness and specs. All final gates pass; 15 Chromium tests at 390px, repeated four consecutive runs. API state queried against scenario server. |
 | P08 | accepted | `ses_eae60496affeZ5HYsVOBYLOg7e` (initial production setup: `ses_eae6c8f11ffefPVsElCXQr6tqG`; completion and final gates: `ses_eae60496affeZ5HYsVOBYLOg7e`) | 1 | Accepted after reviewing production startup/probe, startup tests, real-composition e2e, docs and artifacts. All five final gates pass; no actual CLI execution. |
 | P09 | blocked | — | 0 | Operator configuration/designated target and separate authorization for live service/wake test are still required. Installed `wakeonlan` absent here, so real CLI `-i` support is pending too. |
+| P10a | accepted | `ses_eae307491ffeK7jnzaRgzdkb9A` | 0 | Null override produces MAC-only argv; old global env inert; overrides/clearing verified; check/server/format exit 0 (171 tests, 944 assertions). Handoff docs/work/P10-handoff.md. |
+| P10b | accepted | `ses_eae307491ffeK7jnzaRgzdkb9A` | 0 | CLI default UI/help, safe environment/docs, additive override round-trip browser test; final five gates exit 0 (171 server tests/944 assertions, 18 browser tests at 390px). |
 
 ## Verification evidence
+
+- r2 final verification after P10b, repository root, `PATH="/home/zachjw34/.bun/bin:$PATH"`: `bun run check` exit 0 (0 errors/warnings); `bun run test:server` exit 0 (171 tests, 944 assertions); `bun run build` exit 0 (Vite 8.3.4, 113 modules); `bun run test:e2e` exit 0 (18 Chromium tests, 390px); `bun run format:check` exit 0. Worker session `ses_eae307491ffeK7jnzaRgzdkb9A`, durable handoff `docs/work/P10-handoff.md`. No installed CLI/magic packets/live smoke test invoked.
 
 - P01 preflight, `/home/zachjw34/code/wol-poc`, completed read-only: `bun --version` → `1.4.2` (exit 0); `command -v bun` → `/home/zachjw34/.bun/bin/bun`; `bun:sqlite`, `Bun.serve`, and `Bun.spawn` capability probe passed (exit 0); npm registry returned HTTP 200. Full command evidence is in child session `ses_eaee7876fffe8K6423hmjRre4F`.
 - P01 final verification, `/home/zachjw34/code/wol-poc`, after latest test correction: `bun --version` 1.4.2; `bun install` exit 0 (58 installs/82 packages, no changes); `bun run check` exit 0 (0 errors/warnings); `bun run test:server` exit 0 (10 tests, 33 assertions); `bun run build` exit 0 (Vite 8.3.4, 111 modules); `bun run test:e2e` exit 0 (2 Chromium mobile tests at 390px); `bun run format:check` exit 0. Browser fallback-download warning on unsupported OS occurred during Playwright install, but Chromium launched and tests passed. Exact reports: `ses_eaedf76f8ffeEKDqRKtgO0o3CR` and final correction/verification `ses_eaedce85affeCmDfJZMcC2c1DV`.
@@ -34,6 +38,8 @@
 - P08 final verification, `/home/zachjw34/code/wol-poc`, after last edits: `/home/zachjw34/.bun/bin/bun run check` exit 0 (0 errors/warnings); `... bun run test:server` exit 0 (166 tests, 856 assertions); `... bun run build` exit 0 (Vite 8.3.4, 113 modules); `PATH="/home/zachjw34/.bun/bin:$PATH" /home/zachjw34/.bun/bin/bun run test:e2e` exit 0 (17 Chromium tests at 390px); `... bun run format:check` exit 0. New docs/example files have unknown Prettier parsers and are skipped by `prettier --check .`; explicit file checks report no parser, not a style pass. Full report: `ses_eae60496affeZ5HYsVOBYLOg7e`.
 
 ## Decisions and plan changes
+
+- r2 authorized by user: remove global WOL_BROADCAST_ADDRESS, delegate null device override to CLI default with MAC-only argv; preserve optional per-device -i override and all APP_ORIGIN/loopback security. User reports successful manual MAC-only command; prior app command to documentation address exited 0 but did not wake target. No live app success inferred or runtime data changed.
 
 - User approved execution of `wol-mvp-r1`; no plan deviations.
 - Handoff baseline says the workspace is not a Git repository, but delegated preflight found `.git` and confirmed `git rev-parse --is-inside-work-tree` → true. Preserve existing Git history; no initialization or commits.
@@ -49,5 +55,5 @@
 
 ## Resume here
 
-- P01–P08 accepted. P09 remains blocked on operator-supplied production settings, CLI availability/`-i` confirmation and explicit authorization for the live test. Do not perform deployment or wake activity until then.
+- r2 P10a/P10b accepted. Rebuild/restart instructions in README; old global variable is inert, but existing per-device overrides persist and must be cleared manually if wrong. P09 app/phone live test remains gated; user's successful manual MAC-only command does not establish app smoke-test success. No deployment/wake activity. CLI `-i` support matters only for optional device overrides.
 - Preserve `docs/plan.md`; no Git initialization, real wake commands, deployment, Tailscale changes, or commits.

@@ -192,7 +192,6 @@ export function harnessConfig(scenario: Scenario, port: number): AppConfig {
       HOST: "127.0.0.1",
       PORT: String(port),
       APP_ORIGIN: `http://127.0.0.1:${port}`,
-      WOL_BROADCAST_ADDRESS: "192.168.1.255",
     },
     { mode: "test" },
   );

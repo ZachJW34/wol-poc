@@ -2,8 +2,10 @@
 
 A small Wake-on-LAN web app: one Bun process serves the built Svelte frontend
 and a same-origin API, persists device registrations in SQLite, and runs the
-installed `wakeonlan` CLI with exactly
-`wakeonlan -i <broadcast address> <mac address>` and no shell expansion.
+installed `wakeonlan` CLI as `wakeonlan <mac address>`, which uses that CLI's
+own default broadcast. Only a device with a saved per-device override is sent
+with an address: `wakeonlan -i <broadcast address> <mac address>`. No shell
+expansion, no subnet inference, and no global broadcast setting.
 Product contracts live in `docs/plan.md` and `docs/IMPLEMENTATION.md`.
 
 The app records that a wake command completed. It does not know, and never
@@ -67,18 +69,35 @@ only; it never executes the CLI.
 
 ### Environment
 
-| Variable                | Rule                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `HOST`                  | optional; default `127.0.0.1`; production accepts only `127.0.0.1` or `::1`                             |
-| `PORT`                  | optional; default `3000`; integer 1–65535                                                               |
-| `APP_ORIGIN`            | required; one origin-only HTTPS URL (loopback HTTP only for an explicit development/test configuration) |
-| `WOL_BROADCAST_ADDRESS` | required; operator-supplied IPv4 broadcast, validated syntactically only, never inferred                |
-| `DATABASE_PATH`         | optional; default `./data/wol.sqlite` resolved from the working directory; must be outside `dist`       |
+| Variable        | Rule                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| `HOST`          | optional; default `127.0.0.1`; production accepts only `127.0.0.1` or `::1`                             |
+| `PORT`          | optional; default `3000`; integer 1–65535                                                               |
+| `APP_ORIGIN`    | required; one origin-only HTTPS URL (loopback HTTP only for an explicit development/test configuration) |
+| `DATABASE_PATH` | optional; default `./data/wol.sqlite` resolved from the working directory; must be outside `dist`       |
 
-`.env.example` contains documentation placeholders only (a reserved
-documentation domain and an RFC 5737 address range). It is not a runnable
-configuration, and nothing in it has been checked against a real machine or
-network.
+There is no broadcast variable. `WOL_BROADCAST_ADDRESS` is not read at all, so a
+value left in an old environment file is inert and cannot reach a command, and
+stored per-device overrides are unaffected by its removal.
+
+`.env.example` is the minimal shape an operator fills in; the hostname is the
+only value that cannot be used as written. Nothing in it has been checked
+against a real machine or network.
+
+Minimal example: the loopback backend on port 7123 behind the existing private
+HTTPS proxy that serves the browser origin on port 7124.
+
+```dotenv
+HOST=127.0.0.1
+PORT=7123
+APP_ORIGIN=https://<hostname-placeholder>:7124
+DATABASE_PATH=./data/wol.sqlite
+```
+
+The app does not terminate TLS and opens no public listener; the proxy forwards
+to the loopback backend, and `APP_ORIGIN` must be exactly the origin the browser
+uses. A service should use a persistent `DATABASE_PATH` owned by the service
+user instead of a working-directory path.
 
 ## Access model
 
@@ -95,10 +114,19 @@ can never be served. That is why `DATABASE_PATH` must live outside `dist`.
 
 ## Broadcast and reachability
 
-`WOL_BROADCAST_ADDRESS` is checked for syntax only. Valid syntax cannot prove
-the address is the operator's working subnet broadcast, and a successful wake
-means only that the CLI exited 0. Neither the API nor the UI reports a device as
-online, reachable, or booted.
+With no saved override the app passes only the MAC address, so the destination is
+whatever the installed `wakeonlan` CLI defaults to on the host that runs it; the
+app does not choose, infer, or hardcode that address. A saved per-device override
+still wins for that device and is passed as `-i`.
+
+Removing the old global setting does not change stored device overrides. A wrong
+override is corrected in the Edit form: clear the Broadcast override field and
+save, which stores null and restores the CLI default for that device.
+
+Valid syntax cannot prove an override is the operator's working subnet broadcast,
+and a successful wake means only that the CLI exited 0; it does not show that a
+machine booted. Neither the API nor the UI reports a device as online, reachable,
+or booted.
 
 ## Data and backup
 
@@ -136,13 +164,13 @@ persistent absolute `DATABASE_PATH`, and a `PATH` containing the installed
   `Content-Type` must be `application/json`; `Content-Length` is not trusted as
   the limit.
 
-| Symptom                             | What to check                                                                               |
-| ----------------------------------- | ------------------------------------------------------------------------------------------- |
-| startup: CLI not available          | the CLI is installed and the service `PATH` includes its directory                          |
-| startup: static build not found     | `bun run build` ran in the same working directory the service uses                          |
-| 403 `FORBIDDEN_ORIGIN`              | the browser origin equals `APP_ORIGIN`; the proxy forwards the real origin                  |
-| 404 on a page path                  | there are no client-side routes; only files inside `dist` are served                        |
-| wake succeeds, target does not boot | the broadcast address and the target's WoL capability are operator questions, not app state |
+| Symptom                             | What to check                                                                                                          |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| startup: CLI not available          | the CLI is installed and the service `PATH` includes its directory                                                     |
+| startup: static build not found     | `bun run build` ran in the same working directory the service uses                                                     |
+| 403 `FORBIDDEN_ORIGIN`              | the browser origin equals `APP_ORIGIN`; the proxy forwards the real origin                                             |
+| 404 on a page path                  | there are no client-side routes; only files inside `dist` are served                                                   |
+| wake succeeds, target does not boot | the CLI default or the device's saved override, and the target's WoL capability, are operator questions, not app state |
 
 ## Tests
 
@@ -155,12 +183,16 @@ installed CLI. The harness serves the build on a loopback test port (default
 
 ## Pending
 
-The installed `wakeonlan` CLI is not present on this machine
-(`command -v wakeonlan` → not found), so its `-i` argument support could not be
-confirmed from the host. The exact argv contract is implemented and tested
-through an injected spawn seam; confirming `-i` against the real CLI remains
-pending for the authorized P09 deployment smoke test, along with live
-phone/proxy verification.
+The earlier bootstrap check found no installed `wakeonlan` on this machine
+(`command -v wakeonlan` → not found). That records the state of that check, not
+the current host: the operator reports running `wakeonlan <MAC>` manually and
+waking the target, which is evidence for that manual command only. No app or
+phone live smoke test has been run independently, and the CLI's `-i` argument
+support has not been confirmed from the host. The exact argv contract is
+implemented and tested through an injected spawn seam; confirming `-i` against
+the real CLI matters only when an optional per-device override is used, and
+remains pending for the separately authorized P09 deployment smoke test, along
+with live phone/proxy verification.
 
 Formatting excludes `docs/plan.md`, `docs/IMPLEMENTATION.md`, and
 `IMPLEMENTATION_STATUS.md` (see `.prettierignore`). Files with no Prettier

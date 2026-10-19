@@ -161,7 +161,6 @@ function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     ...loadConfig(
       {
         APP_ORIGIN: "http://127.0.0.1:3000",
-        WOL_BROADCAST_ADDRESS: "192.0.2.255",
       },
       { mode: "test" },
     ),
@@ -320,13 +319,83 @@ describe("production composition through the actual entry point", () => {
     expect(() =>
       startProductionServer({
         APP_ORIGIN: "http://127.0.0.1:3000",
-        WOL_BROADCAST_ADDRESS: "192.0.2.255",
         DATABASE_PATH: join(dataCheck, "wol.sqlite"),
       }),
     ).toThrow(ConfigError);
     expect(existsSync(dataCheck)).toBe(false);
     for (const signal of SIGNALS) {
       expect(process.listenerCount(signal)).toBe(before.get(signal) ?? 0);
+    }
+  });
+
+  test("a legacy WOL_BROADCAST_ADDRESS is inert at startup and cannot reach a command", async () => {
+    const dir = mkdtempSync(join("/tmp/opencode", "wol-legacy-broadcast-"));
+    const dist = join(dir, "dist");
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(
+      join(dist, "index.html"),
+      '<!doctype html><div id="app"></div>\n',
+    );
+
+    const record = join(dir, "executed.txt");
+    installFixtureExecutable(record);
+    const databasePath = join(dir, "wol.sqlite");
+    const port = await freePort();
+    const appOrigin = "https://wol.example.invalid";
+    // A value the old required-broadcast parser rejected; it must now be ignored.
+    const env = {
+      HOST: "127.0.0.1",
+      PORT: String(port),
+      APP_ORIGIN: appOrigin,
+      WOL_BROADCAST_ADDRESS: "224.0.0.1",
+      DATABASE_PATH: databasePath,
+      PATH: pathDir,
+    };
+
+    const diagnostics: RunnerDiagnostics[] = [];
+    const previousCwd = process.cwd();
+    process.chdir(dir);
+    const before = listenerCounts();
+    const server = startProductionServer(env, {
+      runWakeCommand: createWakeRunner({
+        spawn: fixtureSpawn(),
+        onDiagnostics: (diagnosticsRecord) =>
+          diagnostics.push(diagnosticsRecord),
+      }),
+    });
+    try {
+      const url = `http://127.0.0.1:${port}`;
+      const created = await fetch(`${url}/api/devices`, {
+        method: "POST",
+        headers: {
+          origin: appOrigin,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ name: "Desk", macAddress: "02:AA:BB:CC:DD:F1" }),
+      });
+      expect(created.status).toBe(201);
+      const device = ((await created.json()) as { device: Device }).device;
+
+      const wake = await fetch(`${url}/api/devices/${device.id}/wake`, {
+        method: "POST",
+        headers: { origin: appOrigin },
+      });
+      expect(wake.status).toBe(200);
+      // Non-vacuity: startup succeeded with a value the old parser rejected, and
+      // the recorded invocation contains no address at all, so the legacy setting
+      // could not have reached the command.
+      expect(diagnostics[0]!.argv).toEqual([
+        WAKE_EXECUTABLE,
+        "02:AA:BB:CC:DD:F1",
+      ]);
+      expect(recordedInvocation(record)).toEqual([
+        fixtureExecutable,
+        "02:AA:BB:CC:DD:F1",
+      ]);
+    } finally {
+      server.stop();
+      removeListenersSince(before);
+      process.chdir(previousCwd);
     }
   });
 
@@ -352,11 +421,11 @@ describe("production composition through the actual entry point", () => {
     const databasePath = join(dir, "persist", "wol.sqlite");
     const port = await freePort();
     const appOrigin = "https://wol.example.invalid";
+    // No broadcast variable: startup must succeed with no global default.
     const env = {
       HOST: "127.0.0.1",
       PORT: String(port),
       APP_ORIGIN: appOrigin,
-      WOL_BROADCAST_ADDRESS: "192.0.2.255",
       DATABASE_PATH: databasePath,
       PATH: pathDir,
     };
@@ -433,7 +502,8 @@ describe("production composition through the actual entry point", () => {
         expect(text).not.toContain("not a real database");
       }
 
-      // The actual production runner reaches the fixture with the exact argv.
+      // The actual production runner reaches the fixture with the exact argv for a
+      // device with no saved override: the CLI-default path is the MAC-only form.
       const wake = await fetch(`${url}/api/devices/${device.id}/wake`, {
         method: "POST",
         headers: { origin: appOrigin },
@@ -442,18 +512,52 @@ describe("production composition through the actual entry point", () => {
       expect(diagnostics).toHaveLength(1);
       expect(diagnostics[0]!.argv).toEqual([
         WAKE_EXECUTABLE,
-        "-i",
-        "192.0.2.255",
         "02:AA:BB:CC:DD:EE",
       ]);
       expect(diagnostics[0]!.exitCode).toBe(0);
       // Non-vacuity: the record only exists because the fixture child ran; the
       // installed CLI is not on this PATH, so no magic packet can be sent.
+      const firstInvocation = recordedInvocation(record);
+      expect(firstInvocation).toEqual([fixtureExecutable, "02:AA:BB:CC:DD:EE"]);
+
+      // A saved per-device override still produces the exact -i argv. A second
+      // device is used so the per-device cooldown cannot mask this run.
+      const overridden = await fetch(`${url}/api/devices`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          name: "Server room",
+          macAddress: "02:11:22:33:44:55",
+          broadcastAddress: "198.51.100.255",
+        }),
+      });
+      expect(overridden.status).toBe(201);
+      const overrideDevice = ((await overridden.json()) as { device: Device })
+        .device;
+      expect(overrideDevice.broadcastAddress).toBe("198.51.100.255");
+
+      const overrideWake = await fetch(
+        `${url}/api/devices/${overrideDevice.id}/wake`,
+        {
+          method: "POST",
+          headers: { origin: appOrigin },
+        },
+      );
+      expect(overrideWake.status).toBe(200);
+      expect(diagnostics).toHaveLength(2);
+      expect(diagnostics[1]!.argv).toEqual([
+        WAKE_EXECUTABLE,
+        "-i",
+        "198.51.100.255",
+        "02:11:22:33:44:55",
+      ]);
+      // Non-vacuity: the fixture rewrites its record on every run, so this can
+      // only be the override device's invocation.
       expect(recordedInvocation(record)).toEqual([
         fixtureExecutable,
         "-i",
-        "192.0.2.255",
-        "02:AA:BB:CC:DD:EE",
+        "198.51.100.255",
+        "02:11:22:33:44:55",
       ]);
 
       // The store is a real file, so the recorded send time can only come from it.

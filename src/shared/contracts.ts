@@ -101,7 +101,12 @@ export function retryAfterSeconds(retryAfterMs: number): number {
 export type CommandResult =
   { kind: "ok" } | { kind: "failed" } | { kind: "timeout" };
 
+/**
+ * `broadcastAddress` is the device's saved per-device override, or `null` when
+ * the device delegates to the installed CLI's own default. There is no global
+ * default address, so `null` reaches the runner unchanged.
+ */
 export type RunWakeCommand = (input: {
   macAddress: string;
-  broadcastAddress: string;
+  broadcastAddress: string | null;
 }) => Promise<CommandResult>;

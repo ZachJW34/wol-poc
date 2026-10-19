@@ -18,8 +18,7 @@ import {
   type RunWakeCommand,
 } from "../../src/shared/contracts";
 
-const DEFAULT_BROADCAST = "192.168.1.255";
-
+/** A device with no saved override, so the runner receives null. */
 const DESK: Device = {
   id: "6c1e1f2a-3b4c-5d6e-7f80-91a2b3c4d5e6",
   name: "Desk",
@@ -28,7 +27,7 @@ const DESK: Device = {
   lastWakeSentAt: null,
 };
 
-/** A device whose saved override must win over the configured default. */
+/** A device with a saved override, which the runner must receive unchanged. */
 const SERVER_ROOM: Device = {
   id: "11111111-2222-3333-4444-555555555555",
   name: "Server room",
@@ -100,7 +99,7 @@ function fakeRepository(
   return { ...repository, ...overrides };
 }
 
-type RunnerCall = { macAddress: string; broadcastAddress: string };
+type RunnerCall = { macAddress: string; broadcastAddress: string | null };
 type RecordingRunner = RunWakeCommand & { calls: RunnerCall[] };
 
 function recordingRunner(impl: RunWakeCommand): RecordingRunner {
@@ -161,12 +160,11 @@ function serviceWith(
   return createWakeService({
     repository,
     runWakeCommand,
-    defaultBroadcastAddress: DEFAULT_BROADCAST,
     ...extra,
   });
 }
 
-describe("P06 wake service — gate order and effective broadcast", () => {
+describe("P06 wake service — gate order and the device broadcast override", () => {
   test("an unknown id is NOT_FOUND before the runner and reserves no slot", async () => {
     const clock = fakeClock(1000);
     const runner = recordingRunner(async () => ({ kind: "ok" }));
@@ -190,7 +188,7 @@ describe("P06 wake service — gate order and effective broadcast", () => {
     expect(repository.calls).toEqual(["get", "get"]);
   });
 
-  test("the runner receives the saved MAC and the effective broadcast separately", async () => {
+  test("the runner receives the saved MAC and the device override unchanged", async () => {
     const runner = recordingRunner(async () => ({ kind: "ok" }));
     const service = serviceWith(fakeRepository([DESK, SERVER_ROOM]), runner, {
       nowMs: () => 0,
@@ -200,11 +198,40 @@ describe("P06 wake service — gate order and effective broadcast", () => {
     await service.wake(SERVER_ROOM.id);
     await service.wake(DESK.id);
 
-    // Non-vacuity: the override exists only on the seeded device, so the second
-    // input can only come from the configured default.
+    // Non-vacuity: these options carry no default broadcast at all, so the null
+    // input can only come from the device itself, and the other input can only be
+    // the value saved on the seeded device.
     expect(runner.calls).toEqual([
       { macAddress: "02:11:22:33:44:55", broadcastAddress: "10.0.0.255" },
-      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: "192.168.1.255" },
+      { macAddress: "02:AA:BB:CC:DD:EE", broadcastAddress: null },
+    ]);
+  });
+
+  test("clearing a saved override makes the next wake use the CLI default", async () => {
+    const clock = fakeClock(0);
+    const runner = recordingRunner(async () => ({ kind: "ok" }));
+    const repository = fakeRepository([SERVER_ROOM]);
+    const service = serviceWith(repository, runner, {
+      nowMs: clock.nowMs,
+      timestamp: () => "2026-01-02T03:04:05.000Z",
+    });
+
+    await service.wake(SERVER_ROOM.id);
+
+    // Clear the override the way the edit form does: an explicit null.
+    const cleared = repository.update(SERVER_ROOM.id, {
+      broadcastAddress: null,
+    });
+    expect(cleared.broadcastAddress).toBeNull();
+
+    clock.advance(WAKE_COOLDOWN_MS);
+    await service.wake(SERVER_ROOM.id);
+
+    // Non-vacuity: the same device produced an override on the first wake, so a
+    // retained default or a stale override would show up on the second call.
+    expect(runner.calls).toEqual([
+      { macAddress: "02:11:22:33:44:55", broadcastAddress: "10.0.0.255" },
+      { macAddress: "02:11:22:33:44:55", broadcastAddress: null },
     ]);
   });
 
@@ -528,7 +555,6 @@ describe("P06 wake service — process-local cooldown over a persistent store", 
     let index = 0;
     const options = {
       runWakeCommand: runner,
-      defaultBroadcastAddress: DEFAULT_BROADCAST,
       nowMs: clock.nowMs,
       timestamp: () => timestamps[index++] ?? "",
     };
@@ -543,6 +569,13 @@ describe("P06 wake service — process-local cooldown over a persistent store", 
       const service = createWakeService({ repository: first, ...options });
       const sent = await service.wake(created.id);
       expect(sent.lastWakeSentAt).toBe("2026-01-02T03:04:05.000Z");
+
+      // Non-vacuity: the row was created with no override, so the runner can only
+      // have received null from the persisted device.
+      expect(runner.calls[0]).toEqual({
+        macAddress: "02:AA:BB:CC:DD:EE",
+        broadcastAddress: null,
+      });
 
       const duringCooldown = await rejected(service.wake(created.id));
       expect(duringCooldown.code).toBe("WAKE_COOLDOWN");
@@ -560,6 +593,12 @@ describe("P06 wake service — process-local cooldown over a persistent store", 
       const again = await reopened.wake(created.id);
       expect(again.lastWakeSentAt).toBe("2026-01-02T03:04:06.000Z");
       expect(runner.calls.length).toBe(2);
+      // Non-vacuity: the reopened store reads the same override-free row, so the
+      // second call also reports the CLI default rather than any substituted value.
+      expect(runner.calls[1]).toEqual({
+        macAddress: "02:AA:BB:CC:DD:EE",
+        broadcastAddress: null,
+      });
       expect(second.get(created.id)?.lastWakeSentAt).toBe(
         "2026-01-02T03:04:06.000Z",
       );

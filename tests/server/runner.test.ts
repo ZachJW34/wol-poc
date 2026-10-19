@@ -134,6 +134,49 @@ describe("P05 runner — exact argv through the private seam", () => {
     expect(echoed).toEqual([...argv]);
   });
 
+  test("a null override produces exactly the MAC-only argv, the CLI default path", async () => {
+    const records: SpawnRecord[] = [];
+    const diagnostics: RunnerDiagnostics[] = [];
+    const runner = runnerFor(records, diagnostics, "echo-argv.ts", 2000);
+
+    const result = await runner({
+      macAddress: "02:AA:BB:CC:DD:EE",
+      broadcastAddress: null,
+    });
+
+    expect(records.length).toBe(1);
+    const argv = records[0].argv;
+    expect(argv.length).toBe(2);
+    expect(argv[0]).toBe(WAKE_EXECUTABLE);
+    expect(argv).toEqual(["wakeonlan", "02:AA:BB:CC:DD:EE"]);
+    // Non-vacuity: neither `-i` nor any address is present, so no default was
+    // substituted for the omitted override.
+    expect(argv).not.toContain("-i");
+    expect(result).toEqual({ kind: "ok" });
+
+    const echoed = JSON.parse(diagnostics[0].text.trim()) as string[];
+    expect(echoed).toEqual([...argv]);
+  });
+
+  test("an explicit device override still produces the exact -i argv", async () => {
+    const records: SpawnRecord[] = [];
+    const diagnostics: RunnerDiagnostics[] = [];
+    const runner = runnerFor(records, diagnostics, "echo-argv.ts", 2000);
+
+    await runner({
+      macAddress: "02:AA:BB:CC:DD:EE",
+      broadcastAddress: "10.0.0.255",
+    });
+    await runner({ macAddress: "02:11:22:33:44:55", broadcastAddress: null });
+
+    // Non-vacuity: the same runner instance produced both forms, so the argv is
+    // chosen per call rather than fixed for the process.
+    expect(records.map((record) => record.argv)).toEqual([
+      ["wakeonlan", "-i", "10.0.0.255", "02:AA:BB:CC:DD:EE"],
+      ["wakeonlan", "02:11:22:33:44:55"],
+    ]);
+  });
+
   test("shell metacharacters in the addresses are not expanded", async () => {
     const records: SpawnRecord[] = [];
     const diagnostics: RunnerDiagnostics[] = [];

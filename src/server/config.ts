@@ -8,6 +8,11 @@
  * PATH and never executes the CLI, so no automated run can send a magic packet.
  * Invalid configuration and a missing executable must both fail production
  * startup actionably before the store is opened or the server listens.
+ *
+ * Under `wol-cli-default-r2` there is no global broadcast setting: nothing here
+ * reads `WOL_BROADCAST_ADDRESS`, so a value left in an old environment file is
+ * inert even when invalid. Devices delegate to the installed CLI's own default
+ * unless a saved per-device override is present.
  */
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join, resolve, sep } from "node:path";
@@ -27,7 +32,6 @@ export type AppConfig = {
   host: string;
   port: number;
   appOrigin: string;
-  broadcastAddress: string;
   databasePath: string;
   /** Served static assets root; the only directory static responses may read. */
   staticRoot: string;
@@ -117,7 +121,6 @@ export function loadConfig(
     host: parseHost(env.HOST, mode),
     port: parsePort(env.PORT),
     appOrigin: parseOrigin(env.APP_ORIGIN, mode),
-    broadcastAddress: parseBroadcast(env.WOL_BROADCAST_ADDRESS),
     databasePath: parseDatabasePath(env.DATABASE_PATH, cwd, staticRoot),
     staticRoot,
   };
@@ -201,50 +204,6 @@ function parseOrigin(value: string | undefined, mode: ConfigMode): string {
   throw new ConfigError(
     `APP_ORIGIN must be an https (or loopback http for development/test) origin; got "${value}".`,
   );
-}
-
-/**
- * Syntactic IPv4 validation, matching the C1 broadcast rules. Syntax cannot
- * prove that the address is the operator's working subnet broadcast address.
- */
-function parseBroadcast(value: string | undefined): string {
-  if (value === undefined || value === "") {
-    throw new ConfigError(
-      "WOL_BROADCAST_ADDRESS is required: the operator-supplied IPv4 broadcast address (for example 192.168.1.255). Subnets are never inferred.",
-    );
-  }
-  const octets = value.split(".");
-  if (octets.length !== 4) {
-    throw new ConfigError(
-      `WOL_BROADCAST_ADDRESS must be four decimal IPv4 octets; got "${value}".`,
-    );
-  }
-  const numbers: number[] = [];
-  for (const octet of octets) {
-    if (!/^(0|[1-9]\d*)$/.test(octet)) {
-      throw new ConfigError(
-        `WOL_BROADCAST_ADDRESS octets must be decimal 0-255 without leading zeros; got "${value}".`,
-      );
-    }
-    const number = Number(octet);
-    if (number > 255) {
-      throw new ConfigError(
-        `WOL_BROADCAST_ADDRESS octets must be 0-255; got "${value}".`,
-      );
-    }
-    numbers.push(number);
-  }
-  if (numbers.every((octet) => octet === 0)) {
-    throw new ConfigError(
-      `WOL_BROADCAST_ADDRESS must not be 0.0.0.0; got "${value}".`,
-    );
-  }
-  if (numbers[0] >= 224 && numbers[0] <= 239) {
-    throw new ConfigError(
-      `WOL_BROADCAST_ADDRESS must not be a multicast address (224.0.0.0/4); got "${value}".`,
-    );
-  }
-  return value;
 }
 
 function parseDatabasePath(

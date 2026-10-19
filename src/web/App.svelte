@@ -278,7 +278,7 @@
             <p class="device-name">{device.name}</p>
             <p class="meta">MAC: {device.macAddress}</p>
             <p class="meta">
-              Broadcast: {device.broadcastAddress ?? "Server default"}
+              Broadcast: {device.broadcastAddress ?? "CLI default"}
             </p>
             <p class="meta">
               Last sent:
@@ -363,7 +363,8 @@
                   />
                 </p>
                 <p id="edit-broadcast-help" class="help">
-                  Leave blank to use the server default.
+                  Leave blank to use the wakeonlan CLI default. Clearing this
+                  field restores that default for this device.
                 </p>
                 <p id="edit-broadcast-error" class="field-error">
                   {editErrors.broadcastAddress ?? ""}
@@ -437,7 +438,7 @@
       />
     </p>
     <p id="add-broadcast-help" class="help">
-      Optional. Leave blank to use the server default.
+      Optional. Leave blank to use the wakeonlan CLI default.
     </p>
     <p id="add-broadcast-error" class="field-error">
       {addErrors.broadcastAddress ?? ""}
