@@ -58,6 +58,38 @@ That is the real adapter, not a mock: `wakeonlan` is absent on this host, so no 
 none could be. Every other wake observation comes from unit and integration tests with an injected
 harmless executable.
 
+### Deployment configuration written for this machine
+
+The operator asked for `.env` and `compose.yaml` to match their existing Tailscale Serve entry, so the
+working agreement's "never touch the operator's `.env`" rule was set aside for this one write. The
+previous `.env` was a copy of the old placeholder template (`HOST`, `PORT=3000`,
+`APP_ORIGIN=https://app.example.invalid`, `WOL_BROADCAST_ADDRESS`, `/var/lib/wol-poc/...`); `HOST` and
+`WOL_BROADCAST_ADDRESS` no longer exist in the config surface and were dropped.
+
+```text
+.env          PORT=7100
+              APP_ORIGIN=https://zw-asus-laptop.tailb5e44.ts.net:7101
+              DATABASE_PATH=/data/wol.sqlite      # the named volume; a host run needs ./data/...
+              NODE_ENV=production
+compose.yaml  PORT pinned to 7100 to match the Serve target, APP_ORIGIN read from .env,
+              wol-data mounted at /data, network_mode: host, no ports: mapping
+Serve         https://zw-asus-laptop.tailb5e44.ts.net:7101  ->  http://127.0.0.1:7100
+```
+
+`docker compose config` resolves these values with exit 0. The Origin check was re-run live against the
+real entrypoint with a temp database (the volume path is not writable on this host):
+
+```text
+POST /api/devices  Origin: https://zw-asus-laptop.tailb5e44.ts.net:7101        201
+POST /api/devices  Origin: https://zw-asus-laptop.tailb5e44.ts.net             403 FORBIDDEN_ORIGIN
+GET  /api/health                                                              200
+ss -ltn            LISTEN ... 127.0.0.1:7100 only
+restart            the device created above is still listed from the SQLite file
+```
+
+The port is part of the origin, so `APP_ORIGIN` without `:7101` fails every mutation. This is handler
+behaviour only: Serve itself, TLS, and the tailnet path were not exercised.
+
 ### Build-stage and runtime-stage checks (local simulations, not Docker evidence)
 
 - An isolated directory mirroring `.dockerignore` (no `.env`, no `dist`, no `tests/e2e`) passes

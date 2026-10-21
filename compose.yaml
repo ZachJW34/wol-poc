@@ -13,9 +13,12 @@ services:
     network_mode: host
     environment:
       NODE_ENV: production
-      PORT: "7123"
+      # Must match the Tailscale Serve target port. Serve exposes
+      # https://zw-asus-laptop.tailb5e44.ts.net:7101 and proxies it to this loopback port.
+      PORT: "7100"
       # Required from the operator: must equal exactly the origin the browser sends, i.e. the
-      # HTTPS origin reported by `tailscale serve status`.
+      # HTTPS origin reported by `tailscale serve status`, including the :7101 port.
+      # .env supplies this value.
       APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN is required and must match the browser origin exactly}
       DATABASE_PATH: /data/wol.sqlite
     volumes:

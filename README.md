@@ -136,6 +136,16 @@ Then set `APP_ORIGIN` to the exact HTTPS origin displayed by Serve. MagicDNS, ce
 tailnet access grants are host prerequisites. Do not enable Funnel, and do not reset an existing Serve
 configuration.
 
+### This machine
+
+Serve on `zw-asus-laptop` exposes `https://zw-asus-laptop.tailb5e44.ts.net:7101` and proxies it to
+`http://127.0.0.1:7100`, so `.env` sets `PORT=7100` and
+`APP_ORIGIN=https://zw-asus-laptop.tailb5e44.ts.net:7101`. The port is part of the origin: opening the
+dashboard through `:7101` makes the browser send exactly that Origin, while `APP_ORIGIN` without `:7101`
+produces a different Origin and every mutation returns 403. `compose.yaml` reads `APP_ORIGIN` from
+`.env` and pins `PORT` to `7100` to match the Serve target; changing one without the other breaks the
+proxy or the Origin check.
+
 Tailscale cannot send a magic packet for you: WoL is a Layer 2 frame, Tailscale works at Layer 3, and
 native WoL support is still an open feature request
 ([tailscale/tailscale#306](https://github.com/tailscale/tailscale/issues/306)). The working pattern is
