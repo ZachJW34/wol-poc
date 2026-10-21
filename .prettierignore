@@ -5,7 +5,11 @@ test-results/
 playwright-report/
 bun.lock
 
+# Dockerfile instructions are not reformatted (prettier would break RUN continuations).
+Dockerfile
+
 # User source documents and the orchestration record are not reformatted.
 docs/plan.md
 docs/IMPLEMENTATION.md
+IMPLEMENTATION.md
 IMPLEMENTATION_STATUS.md

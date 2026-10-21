@@ -1,0 +1,34 @@
+# Never bake local secrets or local state into the image.
+.env
+.env.*
+!.env.example
+
+# Rebuilt inside the image.
+node_modules
+dist
+
+# Never bake a populated database or its WAL sidecars into an image.
+data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# Git and tooling caches.
+.git
+.gitignore
+.cache
+.playwright*
+test-results
+playwright-report
+coverage
+
+# Docs and tooling not needed at runtime.
+AGENTS.md
+IMPLEMENTATION.md
+IMPLEMENTATION_STATUS.md
+LICENSE
+*.log
+
+# E2E browser journeys are not part of the gates run inside the image.
+tests/e2e

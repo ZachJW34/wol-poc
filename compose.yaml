@@ -1,0 +1,25 @@
+# wol-poc deployment on a Linux LAN host.
+#
+# Host networking is required, not optional: the magic packet must leave through the host's LAN
+# interface and route. A bridge-networked container sends it from the Docker bridge, where the
+# directed-subnet broadcast does not reach the LAN. There is deliberately no `ports:` mapping,
+# because the app binds 127.0.0.1 only.
+services:
+  app:
+    build: .
+    image: wol-poc
+    container_name: wol-poc
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      NODE_ENV: production
+      PORT: "7123"
+      # Required from the operator: must equal exactly the origin the browser sends, i.e. the
+      # HTTPS origin reported by `tailscale serve status`.
+      APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN is required and must match the browser origin exactly}
+      DATABASE_PATH: /data/wol.sqlite
+    volumes:
+      - wol-data:/data
+
+volumes:
+  wol-data:

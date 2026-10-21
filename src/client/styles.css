@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #14171b;
+  --color-panel: #1b1f25;
+  --color-panel-2: #22272e;
+  --color-line: #2c323b;
+  --color-ink: #e6e9ee;
+  --color-ink-muted: #98a2ae;
+  --color-accent: #2dd4bf;
+  --color-accent-ink: #062621;
+  --color-danger: #f0736f;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --radius-card: 14px;
+  --radius-field: 10px;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Roughly 44px touch targets. */
+  button,
+  a {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
