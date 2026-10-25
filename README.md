@@ -105,6 +105,9 @@ APP_ORIGIN=https://<hostname-placeholder>.ts.net docker compose up -d --build
 - There is no `ports:` mapping because the app binds `127.0.0.1` only. Reach it from the host, or
   tunnel it: `ssh -L 7123:127.0.0.1:7123 user@host`.
 - The database lives in the named volume `wol-data` mounted at `/data`, owned by the runtime user.
+- The health check is defined in `compose.yaml` (not the image) and resolves the service's own `PORT` at
+  check time, so it follows the container rather than an image default. Running the image with
+  `docker run` and no compose file therefore has no health check.
 - Avoid `docker compose down -v`: it destroys the persistent volume.
 
 Inspect the runtime image before trusting it:

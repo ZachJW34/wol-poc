@@ -99,16 +99,23 @@ behaviour only: Serve itself, TLS, and the tailnet path were not exercised.
   it (34 packages, 18 top-level), and `bun src/server/index.ts` serves health, `/`, and a mutation
   with production-only dependencies.
 - `useradd` is used rather than `adduser`, because `adduser` is not present in the minimal Debian base.
-- The `HEALTHCHECK` no longer hardcodes a port: it reads `process.env.PORT` at check time and falls back
-  to the image default. Running the exact command against a live server: `PORT=7100` against a server on
-  `127.0.0.1:7100` exits 0; with `PORT` unset it falls back to `7123` and exits 1 when nothing is
-  listening. This was verified on the host, not inside a container.
-  - Caveat found while testing this: Bun loads `.env` from the working directory, so on the host the
-    fallback is masked by the local `.env` (`PORT=7100`). Inside the image `.env` is excluded by
-    `.dockerignore`, so the healthcheck sees only the `ENV` default or the value compose passes.
-  - `EXPOSE` cannot follow a runtime variable, so it remains documentation that must match the runtime
-    `PORT`. Running the image without `PORT` uses the `7123` default, which does not match the `7100`
-    Serve target on this machine; `compose.yaml` pins `7100`, so `docker compose` is unaffected.
+- The health check now lives in `compose.yaml` rather than the `Dockerfile`, so it can read the service's
+  own `PORT` instead of assuming an image default. Tradeoff: `docker run` without compose has no health
+  check at all.
+- The test is `CMD-SHELL` and resolves `process.env.PORT` inside the process. Nothing in the string uses
+  `${}`, because compose interpolates `${...}` when the file is parsed: a `${PORT}` reference would be
+  substituted from `.env` at parse time, not read at check time. The YAML scalar is quoted because an
+  unquoted plain scalar cannot contain `": "`.
+- Verified on the host, not inside a container, by running the exact string through `/bin/sh -c`:
+  `PORT=7100` against a live server on `127.0.0.1:7100` exits 0; with `PORT` unset it falls back to `7123`
+  and exits 1 when nothing is listening. `docker compose config` validates the file with exit 0.
+- Assumption still unverified: `bun` must be on `PATH` inside the runtime image for `CMD-SHELL` to find it.
+  Bun also loads `.env` from the working directory, so on the host the fallback is masked by the local
+  `.env` (`PORT=7100`); inside the image `.env` is excluded by `.dockerignore`, so only the value compose
+  passes is seen.
+- `EXPOSE` cannot follow a runtime variable, so it remains documentation that must match the runtime
+  `PORT`. Running the image without `PORT` uses the `7123` default, which does not match the `7100`
+  Serve target on this machine; `compose.yaml` pins `7100`, so `docker compose` is unaffected.
 
 ## Pending — Docker
 

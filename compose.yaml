@@ -23,6 +23,18 @@ services:
       DATABASE_PATH: /data/wol.sqlite
     volumes:
       - wol-data:/data
+    healthcheck:
+      # The port is resolved inside the container at check time, so the check follows this
+      # service's own PORT. Compose interpolates ${...} when the file is parsed, so nothing here
+      # uses ${}: the value is read from the process environment instead. The scalar is quoted
+      # because an unquoted YAML plain scalar cannot contain ": ".
+      test:
+        - CMD-SHELL
+        - 'bun -e ''const port = process.env.PORT || 7123; fetch("http://127.0.0.1:" + port + "/api/health").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'''
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   wol-data:
