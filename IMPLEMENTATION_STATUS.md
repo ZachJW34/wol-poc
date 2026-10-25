@@ -99,6 +99,16 @@ behaviour only: Serve itself, TLS, and the tailnet path were not exercised.
   it (34 packages, 18 top-level), and `bun src/server/index.ts` serves health, `/`, and a mutation
   with production-only dependencies.
 - `useradd` is used rather than `adduser`, because `adduser` is not present in the minimal Debian base.
+- The `HEALTHCHECK` no longer hardcodes a port: it reads `process.env.PORT` at check time and falls back
+  to the image default. Running the exact command against a live server: `PORT=7100` against a server on
+  `127.0.0.1:7100` exits 0; with `PORT` unset it falls back to `7123` and exits 1 when nothing is
+  listening. This was verified on the host, not inside a container.
+  - Caveat found while testing this: Bun loads `.env` from the working directory, so on the host the
+    fallback is masked by the local `.env` (`PORT=7100`). Inside the image `.env` is excluded by
+    `.dockerignore`, so the healthcheck sees only the `ENV` default or the value compose passes.
+  - `EXPOSE` cannot follow a runtime variable, so it remains documentation that must match the runtime
+    `PORT`. Running the image without `PORT` uses the `7123` default, which does not match the `7100`
+    Serve target on this machine; `compose.yaml` pins `7100`, so `docker compose` is unaffected.
 
 ## Pending — Docker
 

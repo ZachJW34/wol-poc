@@ -48,9 +48,14 @@ ENV NODE_ENV=production
 ENV PORT=7123
 ENV DATABASE_PATH=/data/wol.sqlite
 
+# Metadata only: EXPOSE cannot follow a runtime variable. It must match the PORT the
+# container actually runs with, otherwise tooling that trusts it points at the wrong port.
 EXPOSE 7123
 
+# The port is read from the environment at check time, so the healthcheck follows the
+# container's PORT instead of assuming the image default. Single quotes keep the string
+# out of shell expansion; process.env is resolved inside the process.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD ["bun", "-e", "fetch('http://127.0.0.1:7123/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+  CMD bun -e 'const port = process.env.PORT || 7123; fetch("http://127.0.0.1:" + port + "/api/health").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
 
 CMD ["bun", "run", "start"]
